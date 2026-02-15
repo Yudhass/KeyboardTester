@@ -1,0 +1,9 @@
+# Keyboard Tester Requirements
+# Tkinter sudah built-in di Python 3, tidak perlu install tambahan
+# Untuk Windows dan Linux
+
+# Untuk build executable
+pyinstaller==6.3.0
+
+# Untuk generate icon
+Pillow>=10.0.0

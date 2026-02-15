@@ -1,0 +1,692 @@
+#!/usr/bin/env python3
+"""
+Keyboard Tester Application
+Aplikasi untuk testing keyboard dengan GUI modern
+Mendukung Linux dan Windows
+"""
+
+import tkinter as tk
+from tkinter import ttk, font
+import platform
+
+class KeyboardTester:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Keyboard Tester")
+        self.root.geometry("1200x600")
+        self.root.configure(bg='#1e1e2e')
+        
+        # Set minimum window size
+        self.root.minsize(1000, 500)
+        
+        # Key states tracking
+        self.pressed_keys = set()  # Keys ever pressed
+        self.current_keys = set()  # Keys currently pressed
+        
+        # Color scheme (Catppuccin-inspired modern theme)
+        self.colors = {
+            'bg': '#1e1e2e',
+            'surface': '#313244',
+            'overlay': '#45475a',
+            'text': '#cdd6f4',
+            'never_pressed': '#45475a',
+            'pressed_before': '#89b4fa',
+            'currently_pressed': '#a6e3a1',
+            'border': '#6c7086'
+        }
+        
+        # Keyboard layouts
+        self.keyboard_layouts = {
+            'Full Size (100%)': self.get_fullsize_layout(),
+            'TKL (80%)': self.get_tkl_layout(),
+            '60%': self.get_60_layout()
+        }
+        
+        self.current_layout = 'Full Size (100%)'
+        self.key_buttons = {}
+        
+        self.setup_ui()
+        self.bind_keyboard_events()
+        
+    def setup_ui(self):
+        """Setup the user interface"""
+        # Main container
+        main_frame = tk.Frame(self.root, bg=self.colors['bg'])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Top section - Title and Info
+        top_frame = tk.Frame(main_frame, bg=self.colors['bg'])
+        top_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        title_label = tk.Label(
+            top_frame,
+            text="⌨️ KEYBOARD TESTER",
+            font=('Segoe UI', 24, 'bold'),
+            bg=self.colors['bg'],
+            fg=self.colors['text']
+        )
+        title_label.pack()
+        
+        subtitle_label = tk.Label(
+            top_frame,
+            text="Tekan tombol keyboard untuk menguji",
+            font=('Segoe UI', 10),
+            bg=self.colors['bg'],
+            fg=self.colors['border']
+        )
+        subtitle_label.pack()
+        
+        # Control panel
+        control_frame = tk.Frame(main_frame, bg=self.colors['bg'])
+        control_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # Layout selector
+        layout_frame = tk.Frame(control_frame, bg=self.colors['bg'])
+        layout_frame.pack(side=tk.LEFT)
+        
+        tk.Label(
+            layout_frame,
+            text="Ukuran Keyboard:",
+            font=('Segoe UI', 10),
+            bg=self.colors['bg'],
+            fg=self.colors['text']
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.layout_var = tk.StringVar(value=self.current_layout)
+        layout_combo = ttk.Combobox(
+            layout_frame,
+            textvariable=self.layout_var,
+            values=list(self.keyboard_layouts.keys()),
+            state='readonly',
+            width=15,
+            font=('Segoe UI', 10)
+        )
+        layout_combo.pack(side=tk.LEFT)
+        layout_combo.bind('<<ComboboxSelected>>', self.change_layout)
+        
+        # Reset button
+        reset_btn = tk.Button(
+            control_frame,
+            text="🔄 Reset",
+            command=self.reset_keyboard,
+            font=('Segoe UI', 11, 'bold'),
+            bg=self.colors['overlay'],
+            fg=self.colors['text'],
+            activebackground=self.colors['surface'],
+            activeforeground=self.colors['text'],
+            relief=tk.FLAT,
+            padx=20,
+            pady=8,
+            cursor='hand2',
+            borderwidth=2
+        )
+        reset_btn.pack(side=tk.LEFT, padx=20)
+        
+        # Current key display
+        self.current_key_label = tk.Label(
+            control_frame,
+            text="Tombol Terakhir: -",
+            font=('Segoe UI', 11),
+            bg=self.colors['surface'],
+            fg=self.colors['text'],
+            padx=20,
+            pady=8,
+            relief=tk.FLAT
+        )
+        self.current_key_label.pack(side=tk.LEFT)
+        
+        # Legend
+        legend_frame = tk.Frame(main_frame, bg=self.colors['bg'])
+        legend_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        legends = [
+            ("Belum Ditekan", self.colors['never_pressed']),
+            ("Pernah Ditekan", self.colors['pressed_before']),
+            ("Sedang Ditekan", self.colors['currently_pressed'])
+        ]
+        
+        for text, color in legends:
+            legend_item = tk.Frame(legend_frame, bg=self.colors['bg'])
+            legend_item.pack(side=tk.LEFT, padx=15)
+            
+            color_box = tk.Label(
+                legend_item,
+                bg=color,
+                width=3,
+                relief=tk.FLAT,
+                borderwidth=1
+            )
+            color_box.pack(side=tk.LEFT, padx=(0, 5))
+            
+            tk.Label(
+                legend_item,
+                text=text,
+                font=('Segoe UI', 9),
+                bg=self.colors['bg'],
+                fg=self.colors['text']
+            ).pack(side=tk.LEFT)
+        
+        # Keyboard container with scrollbar
+        keyboard_container = tk.Frame(main_frame, bg=self.colors['bg'])
+        keyboard_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Canvas for scrolling
+        self.canvas = tk.Canvas(
+            keyboard_container,
+            bg=self.colors['bg'],
+            highlightthickness=0
+        )
+        scrollbar = tk.Scrollbar(
+            keyboard_container,
+            orient=tk.VERTICAL,
+            command=self.canvas.yview
+        )
+        
+        self.keyboard_frame = tk.Frame(self.canvas, bg=self.colors['bg'])
+        
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        self.canvas_frame = self.canvas.create_window(
+            (0, 0),
+            window=self.keyboard_frame,
+            anchor=tk.NW
+        )
+        
+        self.keyboard_frame.bind('<Configure>', self.on_frame_configure)
+        self.canvas.bind('<Configure>', self.on_canvas_configure)
+        
+        # Draw keyboard
+        self.draw_keyboard()
+        
+        # Statistics
+        self.stats_label = tk.Label(
+            main_frame,
+            text="Total tombol ditekan: 0",
+            font=('Segoe UI', 9),
+            bg=self.colors['bg'],
+            fg=self.colors['border']
+        )
+        self.stats_label.pack(pady=(10, 0))
+        
+    def on_frame_configure(self, event=None):
+        """Reset scroll region when frame size changes"""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        
+    def on_canvas_configure(self, event):
+        """Center the keyboard frame when canvas is resized"""
+        canvas_width = event.width
+        frame_width = self.keyboard_frame.winfo_reqwidth()
+        
+        if frame_width < canvas_width:
+            x_position = (canvas_width - frame_width) // 2
+        else:
+            x_position = 0
+            
+        self.canvas.coords(self.canvas_frame, x_position, 0)
+        
+    def draw_keyboard(self):
+        """Draw the keyboard layout"""
+        # Clear existing buttons
+        for widget in self.keyboard_frame.winfo_children():
+            widget.destroy()
+        self.key_buttons.clear()
+        
+        layout = self.keyboard_layouts[self.current_layout]
+        
+        for row_idx, row in enumerate(layout):
+            row_frame = tk.Frame(self.keyboard_frame, bg=self.colors['bg'])
+            row_frame.pack(pady=2)
+            
+            for key_info in row:
+                key_name = key_info['key']
+                width = key_info.get('width', 1)
+                is_spacer = key_info.get('spacer', False)
+                
+                if is_spacer:
+                    # Create invisible spacer
+                    spacer = tk.Label(
+                        row_frame,
+                        text='',
+                        bg=self.colors['bg'],
+                        width=int(width * 4),
+                        height=2
+                    )
+                    spacer.pack(side=tk.LEFT, padx=0)
+                else:
+# Skip empty spacers
+                if key_name == ' ':
+                    spacer = tk.Label(
+                        row_frame,
+                        text='',
+                        bg=self.colors['bg'],
+                        width=int(width * 4),
+                        height=2
+                    )
+                    spacer.pack(side=tk.LEFT)
+                    continue
+                
+                # Create key button
+                key_btn = tk.Label(
+                    row_frame,
+                    text=key_name,
+                    font=('Segoe UI', 8 if len(key_name) > 4 else 9, 'bold'),
+                    bg=self.colors['never_pressed'],
+                    fg=self.colors['text'],
+                    relief=tk.RAISED,
+                    borderwidth=2,
+                    width=int(width * 4),
+                    height=2,
+                    cursor='arrow'
+                )
+                key_btn.pack(side=tk.LEFT, padx=1)
+                    
+                    # Store button reference with normalized key name
+                    normalized_key = self.normalize_key(key_name)
+                    self.key_buttons[normalized_key] = key_btn
+                
+    def normalize_key(self, key):
+        """Normalize key name for consistent matching"""
+        # Map special key names to their event.keysym values
+        key_map = {
+            'Esc': 'Escape',
+            'Tab': 'Tab',
+            'Caps': 'Caps_Lock',
+            'Shift': 'Shift_L',
+            'Ctrl': 'Control_L',
+            'Win': 'Super_L',
+            'Alt': 'Alt_L',
+            'Space': 'space',
+            'Enter': 'Return',
+            'Bksp': 'BackSpace',
+            'Left': 'Left',
+            'Right': 'Right',
+            'Up': 'Up',
+            'Down': 'Down',
+            'PrtSc': 'Print',
+            'Scrl': 'Scroll_Lock',
+            'Pause': 'Pause',
+            'Ins': 'Insert',
+            'Del': 'Delete',
+            'Home': 'Home',
+            'End': 'End',
+            'PgUp': 'Prior',
+            'PgDn': 'Next',
+            'Num': 'Num_Lock',
+            'Menu': 'Menu',
+            '`': 'grave',
+            '~': 'asciitilde',
+            # Numpad keys - top row numbers use different keysym
+            'N7': 'KP_7',
+            'N8': 'KP_8', 
+            'N9': 'KP_9',
+            'N4': 'KP_4',
+            'N5': 'KP_5',
+            'N6': 'KP_6',
+            'N1': 'KP_1',
+            'N2': 'KP_2',
+            'N3': 'KP_3',
+            'N0': 'KP_0',
+            'N.': 'KP_Decimal',
+            'N/': 'KP_Divide',
+            'N*': 'KP_Multiply',
+            'N-': 'KP_Subtract',
+            'N+': 'KP_Add',
+            'NEnter': 'KP_Enter',
+        }
+        
+        if key in key_map:
+            return key_map[key]
+        return key
+        
+    def bind_keyboard_events(self):
+        """Bind keyboard events"""
+        self.root.bind('<KeyPress>', self.on_key_press)
+        self.root.bind('<KeyRelease>', self.on_key_release)
+        
+    def on_key_press(self, event):
+        """Handle key press event"""
+        key = event.keysym
+        
+        # Update current key display
+        display_name = self.get_display_name(key)
+        self.current_key_label.config(text=f"Tombol Terakhir: {display_name}")
+        
+        # Add to pressed keys sets
+        self.pressed_keys.add(key)
+        self.current_keys.add(key)
+        
+        # Update key visual
+        self.update_key_visual(key)
+        
+        # Update statistics
+        self.update_statistics()
+        
+    def on_key_release(self, event):
+        """Handle key release event"""
+        key = event.keysym
+        
+        # Remove from current keys
+        if key in self.current_keys:
+            self.current_keys.remove(key)
+            
+        # Update key visual
+        self.update_key_visual(key)
+        
+    def update_key_visual(self, key):
+        """Update the visual state of a key"""
+        # Find all matching buttons for this key
+        matching_buttons = []
+        
+        for btn_key, btn in self.key_buttons.items():
+            if self.keys_match(key, btn_key):
+                matching_buttons.append(btn)
+        
+        # Update all matching buttons
+        for btn in matching_buttons:
+            if key in self.current_keys:
+                # Currently pressed
+                btn.config(bg=self.colors['currently_pressed'], relief=tk.SUNKEN)
+            elif key in self.pressed_keys:
+                # Previously pressed
+                btn.config(bg=self.colors['pressed_before'], relief=tk.RAISED)
+            else:
+                # Never pressed
+                btn.config(bg=self.colors['never_pressed'], relief=tk.RAISED)
+                    
+    def keys_match(self, key1, key2):
+        """Check if two keys represent the same physical key"""
+        # Handle modifier keys that can be left or right
+        shift_keys = {'Shift_L', 'Shift_R'}
+        ctrl_keys = {'Control_L', 'Control_R'}
+        alt_keys = {'Alt_L', 'Alt_R'}
+        super_keys = {'Super_L', 'Super_R'}
+        
+        if key1 in shift_keys and key2 in shift_keys:
+            return True
+        if key1 in ctrl_keys and key2 in ctrl_keys:
+            return True
+        if key1 in alt_keys and key2 in alt_keys:
+            return True
+        if key1 in super_keys and key2 in super_keys:
+            return True
+        
+        # Handle letter keys (case insensitive)
+        if len(str(key1)) == 1 and len(str(key2)) == 1:
+            if str(key1).upper() == str(key2).upper():
+                return True
+        
+        # Handle top row numbers matching their actual keysym
+        number_map = {
+            '1': '1', '2': '2', '3': '3', '4': '4', '5': '5',
+            '6': '6', '7': '7', '8': '8', '9': '9', '0': '0'
+        }
+        if key1 in number_map and key2 in number_map:
+            return key1 == key2
+        
+        # Handle special characters
+        special_chars = ['-', '=', '[', ']', '\\', ';', "'", ',', '.', '/', '`']
+        if key1 in special_chars and key2 in special_chars:
+            # Map keysym to display character
+            keysym_map = {
+                'minus': '-', 'equal': '=', 'bracketleft': '[', 'bracketright': ']',
+                'backslash': '\\', 'semicolon': ';', 'apostrophe': "'",
+                'comma': ',', 'period': '.', 'slash': '/', 'grave': '`'
+            }
+            k1_mapped = keysym_map.get(key1, key1)
+            k2_mapped = keysym_map.get(key2, key2)
+            if k1_mapped == k2_mapped:
+                return True
+        
+        # Check if key1 (event.keysym) matches the normalized button key (key2)
+        if key1 == key2:
+            return True
+        
+        # Check reverse - if button key normalized equals event key
+        return self.normalize_key(key1) == key2 or key1 == self.normalize_key(key2)
+        
+    def get_display_name(self, key):
+        """Get friendly display name for a key"""
+        display_map = {
+            'Escape': 'Esc',
+            'Caps_Lock': 'Caps Lock',
+            'Shift_L': 'Shift (L)',
+            'Shift_R': 'Shift (R)',
+            'Control_L': 'Ctrl (L)',
+            'Control_R': 'Ctrl (R)',
+            'Alt_L': 'Alt (L)',
+            'Alt_R': 'Alt (R)',
+            'Super_L': 'Win (L)',
+            'Super_R': 'Win (R)',
+            'Return': 'Enter',
+            'BackSpace': 'Backspace',
+            'Prior': 'Page Up',
+            'Next': 'Page Down',
+            'Scroll_Lock': 'Scroll Lock',
+            'Num_Lock': 'Num Lock',
+            'Print': 'Print Screen',
+            'space': 'Space'
+        }
+        
+        return display_map.get(key, key)
+        
+    def update_statistics(self):
+        """Update statistics display"""
+        total_pressed = len(self.pressed_keys)
+        self.stats_label.config(text=f"Total tombol ditekan: {total_pressed}")
+        
+    def reset_keyboard(self):
+        """Reset all key states"""
+        self.pressed_keys.clear()
+        self.current_keys.clear()
+        self.current_key_label.config(text="Tombol Terakhir: -")
+        
+        # Reset all button colors
+        for btn in self.key_buttons.values():
+            btn.config(bg=self.colors['never_pressed'], relief=tk.RAISED)
+            
+        self.update_statistics()
+        
+    def change_layout(self, event=None):
+        """Change keyboard layout"""
+        self.current_layout = self.layout_var.get()
+        self.draw_keyboard()
+        
+        # Reapply key states to new layout
+        for key in self.pressed_keys:
+            self.update_key_visual(key)
+            
+    def get_fullsize_layout(self):
+        """Get full-size keyboard layout (100%) - Realistic spacing"""
+        return [
+            # Function row
+            [
+                {'key': 'Esc'},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'F1'}, {'key': 'F2'}, {'key': 'F3'}, {'key': 'F4'},
+                {'key': '', 'width': 0.25, 'spacer': True},
+                {'key': 'F5'}, {'key': 'F6'}, {'key': 'F7'}, {'key': 'F8'},
+                {'key': '', 'width': 0.25, 'spacer': True},
+                {'key': 'F9'}, {'key': 'F10'}, {'key': 'F11'}, {'key': 'F12'},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'PrtSc'}, {'key': 'Scrl'}, {'key': 'Pause'},
+            ],
+            # Number row
+            [
+                {'key': '`'}, {'key': '1'}, {'key': '2'}, {'key': '3'}, {'key': '4'},
+                {'key': '5'}, {'key': '6'}, {'key': '7'}, {'key': '8'}, {'key': '9'},
+                {'key': '0'}, {'key': '-'}, {'key': '='}, {'key': 'Bksp', 'width': 2},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'Ins'}, {'key': 'Home'}, {'key': 'PgUp'},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'Num'}, {'key': 'N/'}, {'key': 'N*'}, {'key': 'N-'},
+            ],
+            # QWERTY row
+            [
+                {'key': 'Tab', 'width': 1.5}, {'key': 'Q'}, {'key': 'W'}, {'key': 'E'},
+                {'key': 'R'}, {'key': 'T'}, {'key': 'Y'}, {'key': 'U'}, {'key': 'I'},
+                {'key': 'O'}, {'key': 'P'}, {'key': '['}, {'key': ']'}, {'key': '\\', 'width': 1.5},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'Del'}, {'key': 'End'}, {'key': 'PgDn'},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'N7'}, {'key': 'N8'}, {'key': 'N9'}, {'key': 'N+'},
+            ],
+            # ASDF row
+            [
+                {'key': 'Caps', 'width': 1.75}, {'key': 'A'}, {'key': 'S'}, {'key': 'D'},
+                {'key': 'F'}, {'key': 'G'}, {'key': 'H'}, {'key': 'J'}, {'key': 'K'},
+                {'key': 'L'}, {'key': ';'}, {'key': "'"}, {'key': 'Enter', 'width': 2.25},
+                {'key': '', 'width': 3.5, 'spacer': True},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'N4'}, {'key': 'N5'}, {'key': 'N6'}, {'key': 'N+'},
+            ],
+            # ZXCV row
+            [
+                {'key': 'Shift', 'width': 2.25}, {'key': 'Z'}, {'key': 'X'}, {'key': 'C'},
+                {'key': 'V'}, {'key': 'B'}, {'key': 'N'}, {'key': 'M'}, {'key': ','},
+                {'key': '.'}, {'key': '/'}, {'key': 'Shift', 'width': 2.75},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': '', 'width': 1, 'spacer': True}, {'key': 'Up'}, {'key': '', 'width': 1, 'spacer': True},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'N1'}, {'key': 'N2'}, {'key': 'N3'}, {'key': 'NEnter'},
+            ],
+            # Bottom row
+            [
+                {'key': 'Ctrl', 'width': 1.25}, {'key': 'Win', 'width': 1.25},
+                {'key': 'Alt', 'width': 1.25}, {'key': 'Space', 'width': 6.25},
+                {'key': 'Alt', 'width': 1.25}, {'key': 'Win', 'width': 1.25},
+                {'key': 'Menu', 'width': 1.25}, {'key': 'Ctrl', 'width': 1.25},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'Left'}, {'key': 'Down'}, {'key': 'Right'},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'N0', 'width': 2}, {'key': 'N.'}, {'key': 'NEnter'},
+            ],
+        ]
+        
+    def get_tkl_layout(self):
+        """Get TKL keyboard layout (80%) - Realistic spacing"""
+        return [
+            # Function row
+            [
+                {'key': 'Esc'},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'F1'}, {'key': 'F2'}, {'key': 'F3'}, {'key': 'F4'},
+                {'key': '', 'width': 0.25, 'spacer': True},
+                {'key': 'F5'}, {'key': 'F6'}, {'key': 'F7'}, {'key': 'F8'},
+                {'key': '', 'width': 0.25, 'spacer': True},
+                {'key': 'F9'}, {'key': 'F10'}, {'key': 'F11'}, {'key': 'F12'},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'PrtSc'}, {'key': 'Scrl'}, {'key': 'Pause'},
+            ],
+            # Number row
+            [
+                {'key': '`'}, {'key': '1'}, {'key': '2'}, {'key': '3'}, {'key': '4'},
+                {'key': '5'}, {'key': '6'}, {'key': '7'}, {'key': '8'}, {'key': '9'},
+                {'key': '0'}, {'key': '-'}, {'key': '='}, {'key': 'Bksp', 'width': 2},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'Ins'}, {'key': 'Home'}, {'key': 'PgUp'},
+            ],
+            # QWERTY row
+            [
+                {'key': 'Tab', 'width': 1.5}, {'key': 'Q'}, {'key': 'W'}, {'key': 'E'},
+                {'key': 'R'}, {'key': 'T'}, {'key': 'Y'}, {'key': 'U'}, {'key': 'I'},
+                {'key': 'O'}, {'key': 'P'}, {'key': '['}, {'key': ']'}, {'key': '\\', 'width': 1.5},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'Del'}, {'key': 'End'}, {'key': 'PgDn'},
+            ],
+            # ASDF row
+            [
+                {'key': 'Caps', 'width': 1.75}, {'key': 'A'}, {'key': 'S'}, {'key': 'D'},
+                {'key': 'F'}, {'key': 'G'}, {'key': 'H'}, {'key': 'J'}, {'key': 'K'},
+                {'key': 'L'}, {'key': ';'}, {'key': "'"}, {'key': 'Enter', 'width': 2.25},
+            ],
+            # ZXCV row
+            [
+                {'key': 'Shift', 'width': 2.25}, {'key': 'Z'}, {'key': 'X'}, {'key': 'C'},
+                {'key': 'V'}, {'key': 'B'}, {'key': 'N'}, {'key': 'M'}, {'key': ','},
+                {'key': '.'}, {'key': '/'}, {'key': 'Shift', 'width': 2.75},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': '', 'width': 1, 'spacer': True}, {'key': 'Up'}, {'key': '', 'width': 1, 'spacer': True},
+            ],
+            # Bottom row
+            [
+                {'key': 'Ctrl', 'width': 1.25}, {'key': 'Win', 'width': 1.25},
+                {'key': 'Alt', 'width': 1.25}, {'key': 'Space', 'width': 6.25},
+                {'key': 'Alt', 'width': 1.25}, {'key': 'Win', 'width': 1.25},
+                {'key': 'Menu', 'width': 1.25}, {'key': 'Ctrl', 'width': 1.25},
+                {'key': '', 'width': 0.5, 'spacer': True},
+                {'key': 'Left'}, {'key': 'Down'}, {'key': 'Right'},
+            ],
+        ]
+        
+    def get_60_layout(self):
+        """Get 60% keyboard layout - Compact and realistic"""
+        return [
+            # Number row
+            [
+                {'key': '`'},
+                {'key': '1'}, {'key': '2'}, {'key': '3'}, {'key': '4'},
+                {'key': '5'}, {'key': '6'}, {'key': '7'}, {'key': '8'}, {'key': '9'},
+                {'key': '0'}, {'key': '-'}, {'key': '='}, {'key': 'Bksp', 'width': 2},
+            ],
+            # QWERTY row
+            [
+                {'key': 'Tab', 'width': 1.5}, {'key': 'Q'}, {'key': 'W'}, {'key': 'E'},
+                {'key': 'R'}, {'key': 'T'}, {'key': 'Y'}, {'key': 'U'}, {'key': 'I'},
+                {'key': 'O'}, {'key': 'P'}, {'key': '['}, {'key': ']'}, {'key': '\\', 'width': 1.5},
+            ],
+            # ASDF row
+            [
+                {'key': 'Caps', 'width': 1.75}, {'key': 'A'}, {'key': 'S'}, {'key': 'D'},
+                {'key': 'F'}, {'key': 'G'}, {'key': 'H'}, {'key': 'J'}, {'key': 'K'},
+                {'key': 'L'}, {'key': ';'}, {'key': "'"}, {'key': 'Enter', 'width': 2.25},
+            ],
+            # ZXCV row
+            [
+                {'key': 'Shift', 'width': 2.25}, {'key': 'Z'}, {'key': 'X'}, {'key': 'C'},
+                {'key': 'V'}, {'key': 'B'}, {'key': 'N'}, {'key': 'M'}, {'key': ','},
+                {'key': '.'}, {'key': '/'}, {'key': 'Shift', 'width': 2.75},
+            ],
+            # Bottom row
+            [
+                {'key': 'Ctrl', 'width': 1.25}, {'key': 'Win', 'width': 1.25},
+                {'key': 'Alt', 'width': 1.25}, {'key': 'Space', 'width': 6.25},
+                {'key': 'Alt', 'width': 1.25}, {'key': 'Win', 'width': 1.25},
+                {'key': 'Menu', 'width': 1.25}, {'key': 'Ctrl', 'width': 1.25},
+            ],
+        ]
+
+
+def main():
+    """Main function to run the application"""
+    root = tk.Tk()
+    
+    # Configure ttk style for modern look
+    style = ttk.Style()
+    style.theme_use('clam')
+    
+    # Configure combobox style
+    style.configure('TCombobox',
+                   fieldbackground='#313244',
+                   background='#313244',
+                   foreground='#cdd6f4',
+                   arrowcolor='#cdd6f4',
+                   borderwidth=0)
+    
+    app = KeyboardTester(root)
+    
+    # Center window on screen
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (width // 2)
+    y = (root.winfo_screenheight() // 2) - (height // 2)
+    root.geometry(f'{width}x{height}+{x}+{y}')
+    
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
