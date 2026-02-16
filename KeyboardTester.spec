@@ -34,5 +34,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['keyboard_icon.ico'],
+    icon=['keyboard_icon.png'],
 )

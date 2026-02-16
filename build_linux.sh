@@ -69,7 +69,7 @@ pyinstaller --onefile \
             --windowed \
             --name="KeyboardTester" \
             --icon=keyboard_icon.png \
-            keyboard_tester.py
+            keyboard.py
 
 if [ $? -ne 0 ]; then
     echo ""
