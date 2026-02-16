@@ -24,8 +24,8 @@ echo.
 REM ================================
 REM Check file utama
 REM ================================
-if not exist "keyboard_tester.py" (
-    echo [ERROR] File keyboard_tester.py tidak ditemukan!
+if not exist "keyboard.py" (
+    echo [ERROR] File keyboard.py tidak ditemukan!
     echo Pastikan file berada di folder yang sama dengan build.bat
     pause
     exit /b 1
@@ -36,7 +36,7 @@ if not exist "keyboard_icon.ico" (
     python generate_icon.py
 )
 
-echo [OK] File keyboard_tester.py ditemukan
+echo [OK] File keyboard.py ditemukan
 echo.
 
 REM ================================
@@ -81,7 +81,7 @@ python -m PyInstaller ^
 --noconfirm ^
 --icon=keyboard_icon.ico ^
 --name KeyboardTester ^
-keyboard_tester.py
+keyboard.py
 
 if %errorlevel% neq 0 (
     echo.
