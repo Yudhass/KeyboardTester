@@ -1,5 +1,7 @@
 # Keyboard Tester - Project Completed ✅
 
+<!-- auto-py-to-exe -->
+
 ## Requirements Asli:
 - ✅ Aplikasi keyboard tester menggunakan Python
 - ✅ GUI/aplikasi desktop yang modern dan mudah digunakan
